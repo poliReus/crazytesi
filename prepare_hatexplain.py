@@ -7,14 +7,13 @@ import pandas as pd
 
 
 SEED = 20261001
-N_PER_CLASS = 1000
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 RAW_PATH = DATA_DIR / "hatexplain_dataset.json"
-OUTPUT_PATH = DATA_DIR / "hatexplain_2000.csv"
+OUTPUT_PATH = DATA_DIR / "hatexplain_full.csv"
 
 DATA_URL = (
     "https://raw.githubusercontent.com/"
@@ -30,96 +29,149 @@ def download_dataset():
         return
 
     print("Downloading HateXplain...")
-    urlretrieve(DATA_URL, RAW_PATH)
+
+    urlretrieve(
+        DATA_URL,
+        RAW_PATH,
+    )
+
     print(f"Saved to: {RAW_PATH}")
 
 
 def binary_vote(label):
-    label = label.lower()
+    label = label.lower().strip()
 
-    if label in {"hatespeech", "offensive"}:
+    if label in {
+        "hatespeech",
+        "offensive",
+    }:
         return 1
 
     if label == "normal":
         return 0
 
-    raise ValueError(f"Unknown label: {label}")
+    raise ValueError(
+        f"Unknown label: {label}"
+    )
 
 
 def majority_label(votes):
-    return int(sum(votes) > len(votes) / 2)
+    return int(
+        sum(votes) > len(votes) / 2
+    )
 
 
 def main():
     download_dataset()
 
-    with open(RAW_PATH, "r", encoding="utf-8") as f:
+    print()
+    print("Loading dataset...")
+
+    with open(
+        RAW_PATH,
+        "r",
+        encoding="utf-8",
+    ) as f:
         data = json.load(f)
 
     rows = []
 
+    skipped_no_annotators = 0
+    skipped_empty_text = 0
+
     for post_id, item in data.items():
-        tokens = item["post_tokens"]
-        text = " ".join(tokens)
 
-        annotators = item.get("annotators", [])
+        tokens = item.get(
+            "post_tokens",
+            []
+        )
 
-        if not annotators:
+        if not tokens:
+            skipped_empty_text += 1
             continue
 
-        votes = [
-            binary_vote(a["label"])
+        text = " ".join(tokens).strip()
+
+        if not text:
+            skipped_empty_text += 1
+            continue
+
+        annotators = item.get(
+            "annotators",
+            []
+        )
+
+        if not annotators:
+            skipped_no_annotators += 1
+            continue
+
+        labels = [
+            a["label"]
             for a in annotators
+        ]
+
+        votes = [
+            binary_vote(label)
+            for label in labels
         ]
 
         toxic_votes = sum(votes)
         total_votes = len(votes)
-        human_toxic_probability = toxic_votes / total_votes
 
-        ground_truth = majority_label(votes)
+        human_toxic_probability = (
+            toxic_votes
+            / total_votes
+        )
+
+        ground_truth = majority_label(
+            votes
+        )
 
         rows.append(
             {
-                "post_id": post_id,
-                "text": text,
-                "ground_truth": ground_truth,
-                "toxic_votes": toxic_votes,
-                "total_votes": total_votes,
-                "human_toxic_probability": human_toxic_probability,
-                "annotator_labels": "|".join(
-                    a["label"] for a in annotators
-                ),
+                "post_id":
+                    post_id,
+
+                "text":
+                    text,
+
+                "ground_truth":
+                    ground_truth,
+
+                "toxic_votes":
+                    toxic_votes,
+
+                "total_votes":
+                    total_votes,
+
+                "human_toxic_probability":
+                    human_toxic_probability,
+
+                "annotator_labels":
+                    "|".join(labels),
             }
         )
 
     df = pd.DataFrame(rows)
 
-    toxic = df[df["ground_truth"] == 1]
-    non_toxic = df[df["ground_truth"] == 0]
-
-    if len(toxic) < N_PER_CLASS or len(non_toxic) < N_PER_CLASS:
-        raise RuntimeError(
-            f"Not enough examples: "
-            f"toxic={len(toxic)}, "
-            f"non_toxic={len(non_toxic)}"
-        )
-
-    toxic_sample = toxic.sample(
-        n=N_PER_CLASS,
-        random_state=SEED,
+    print()
+    print(
+        f"Valid examples loaded: "
+        f"{len(df)}"
     )
 
-    non_toxic_sample = non_toxic.sample(
-        n=N_PER_CLASS,
-        random_state=SEED,
+    print(
+        f"Skipped without annotators: "
+        f"{skipped_no_annotators}"
     )
 
-    final = pd.concat(
-        [toxic_sample, non_toxic_sample],
-        ignore_index=True,
+    print(
+        f"Skipped empty texts: "
+        f"{skipped_empty_text}"
     )
 
-    final = final.sample(
+    # Shuffle reproducibly.
+    final = df.sample(
         frac=1,
         random_state=SEED,
     ).reset_index(drop=True)
@@ -128,8 +180,11 @@ def main():
         0,
         "scenario_id",
         [
-            f"HX{i:04d}"
-            for i in range(1, len(final) + 1)
+            f"HX{i:05d}"
+            for i in range(
+                1,
+                len(final) + 1
+            )
         ],
     )
 
@@ -139,18 +194,75 @@ def main():
     )
 
     print()
-    print(f"Saved: {OUTPUT_PATH}")
-    print()
-    print("Class counts:")
-    print(final["ground_truth"].value_counts().sort_index())
+    print("=" * 60)
+    print("FULL HATEXPLAIN DATASET")
+    print("=" * 60)
 
     print()
-    print("Human toxic probability:")
     print(
-        final["human_toxic_probability"]
+        f"Saved to:\n{OUTPUT_PATH}"
+    )
+
+    print()
+    print(
+        f"Total examples: "
+        f"{len(final)}"
+    )
+
+    print()
+    print("Class counts:")
+    print(
+        final[
+            "ground_truth"
+        ]
         .value_counts()
         .sort_index()
     )
+
+    print()
+    print("Class percentages:")
+    print(
+        (
+            final[
+                "ground_truth"
+            ]
+            .value_counts(
+                normalize=True
+            )
+            .sort_index()
+            * 100
+        ).round(2)
+    )
+
+    print()
+    print(
+        "Human toxic probability "
+        "distribution:"
+    )
+
+    print(
+        final[
+            "human_toxic_probability"
+        ]
+        .value_counts()
+        .sort_index()
+    )
+
+    print()
+    print(
+        "Annotator-count distribution:"
+    )
+
+    print(
+        final[
+            "total_votes"
+        ]
+        .value_counts()
+        .sort_index()
+    )
+
+    print()
+    print("Done.")
 
 
 if __name__ == "__main__":

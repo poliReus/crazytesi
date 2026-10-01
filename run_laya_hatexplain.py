@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATASET_PATH = (
     BASE_DIR
     / "data"
-    / "hatexplain_2000.csv"
+    / "hatexplain_full.csv"
 )
 
 RESULTS_DIR = BASE_DIR / "results"
@@ -19,12 +19,12 @@ RESULTS_DIR.mkdir(exist_ok=True)
 
 RESULTS_PATH = (
     RESULTS_DIR
-    / "hatexplain_laya_results.csv"
+    / "hatexplain_laya_results_full.csv"
 )
 
 RAW_PATH = (
     RESULTS_DIR
-    / "hatexplain_laya_raw.jsonl"
+    / "hatexplain_laya_raw_full.jsonl"
 )
 
 BATCH_SIZE = 32
