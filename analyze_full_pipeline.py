@@ -33,13 +33,13 @@ BASE_DIR = Path(__file__).resolve().parent
 RESULTS_PATH = (
     BASE_DIR
     / "results"
-    / "hatexplain_laya_results_full.csv"
+    / "hatexplain_balanced_laya_results.csv"
 )
 
 OUTPUT_DIR = (
     BASE_DIR
     / "results"
-    / "full_analysis"
+    / "balanced_analysis"
 )
 
 OUTPUT_DIR.mkdir(
